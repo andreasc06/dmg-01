@@ -1,5 +1,7 @@
 
 mod cpu;
+mod bus;
+mod instructions;
 
 fn main() {
 
@@ -9,18 +11,12 @@ fn main() {
         println!("CPU Initialized")
     }
 
-    // fibonacci 
-    cpu.set_register(&cpu::RegEnum::A, 0);
-    cpu.set_register(&cpu::RegEnum::B, 1);
-    cpu.set_register(&cpu::RegEnum::C, 0); 
-    println!("{}", cpu.get_registers(&cpu::RegEnum::A));
+    let rom = include_bytes!("../bin/dmg_boot.bin");
+    
+    // Loads bootrom from 0x000-0x100
+    for (i, byte) in rom.iter().enumerate() {
+        cpu.bus.write(i as u16, *byte);
+    } 
 
-    for i in 0..12 {
-        cpu.add_rx_ty(&cpu::RegEnum::A, &cpu::RegEnum::B);
-        cpu.ld_rx_ry(&cpu::RegEnum::C,&cpu::RegEnum::A);
-        cpu.ld_rx_ry(&cpu::RegEnum::A,&cpu::RegEnum::B);
-        cpu.ld_rx_ry(&cpu::RegEnum::B,&cpu::RegEnum::C);
-        println!("{}", cpu.get_registers(&cpu::RegEnum::A));
-    }
-
+    cpu.boot()
 }
