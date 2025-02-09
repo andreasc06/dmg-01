@@ -1,7 +1,9 @@
+
 use crate::bus::Bus;
 
-pub enum RegEnum {
-    A, B, C, D, E, H, L
+pub enum Register {
+    A, B, C, D, E, H, L, F,
+    BC, DE, HL
 }
 
 pub struct Registers {
@@ -49,6 +51,7 @@ impl Registers {
         self.h = (value >> 8) as u8;
         self.l = (value & 0xFF) as u8;
     }
+
 }
 
 impl CPU {
@@ -62,111 +65,93 @@ impl CPU {
     }
 
     pub fn boot(&mut self){
+        let mut loops: i32 = 0;
         loop {
-            let current_instruction = self.bus.read(self.pc);
-        
-            self.pc += 0x1;
-
-            match current_instruction {
-                0x31 => self.ld_sp_n16(),
-                0xAF => self.xor_a(),
-                0x21 => self.ld_hl_n16(),
-                0x32 => self.ld_hld_a(),
-                0xCB => { 
-                    let cb_instruction = self.bus.read(self.pc);
-                    self.pc += 1;
-                    match cb_instruction {
-                        0x7C => self.bit_7_h(),
-                        _ => break,
-                    }
-                },
-
-            
-                0x20 => self.jr_nz_i8(),
-                _ => break
-            }
+            let current_instruction = self.fetch_n8();
 
             println!();
+            println!("Current loop: {}", loops);
             println!("Current Instruction: {:#x}", current_instruction);
             println!("PC: {:X} SP: {:X}", self.pc, self.sp);
             println!("A: {:X} F: {:X} B: {:X} C: {:X} D: {:X} E: {:X} H: {:X} L: {:X}", self.register.a, self.register.f, self.register.b, self.register.c, self.register.d, self.register.e, self.register.h, self.register.l);
             println!();
 
-
+            loops += 1;
         }
     }
 
-    pub fn get_registers(&self, reg: &RegEnum) -> u8{
+    pub fn fetch_n8(&mut self) -> u8{
+        let n8: u8 = self.bus.read(self.pc);
+        self.pc += 1;
+        return n8;
+    }
+    pub fn set_sp(&mut self, value: u16){
+        self.sp = value;
+    }
+    pub fn set_pc(&mut self, value: u16){
+        self.pc = value;
+    }
+
+    pub fn get_r8(&self, reg: &Register) -> u8{
         match reg {
-            RegEnum::A => self.register.a,
-            RegEnum::B => self.register.b,
-            RegEnum::C => self.register.c,
-            RegEnum::D => self.register.d,
-            RegEnum::E => self.register.e,
-            RegEnum::H => self.register.h,
-            RegEnum::L => self.register.l
+            Register::A => self.register.a,
+            Register::B => self.register.b,
+            Register::C => self.register.c,
+            Register::D => self.register.d,
+            Register::E => self.register.e,
+            Register::H => self.register.h,
+            Register::L => self.register.l,
+            Register::F => self.register.f,
+            _ => 0
         }     
     }
-
-    pub fn set_register(&mut self, reg: &RegEnum, value: u8){
+    pub fn set_r8(&mut self, reg: &Register, value: u8){
         match reg {
-            RegEnum::A => self.register.a = value,
-            RegEnum::B => self.register.b = value,
-            RegEnum::C => self.register.c = value,
-            RegEnum::D => self.register.d = value,
-            RegEnum::E => self.register.e = value,
-            RegEnum::H => self.register.h = value,
-            RegEnum::L => self.register.l = value,
+            Register::A => self.register.a = value,
+            Register::B => self.register.b = value,
+            Register::C => self.register.c = value,
+            Register::D => self.register.d = value,
+            Register::E => self.register.e = value,
+            Register::H => self.register.h = value,
+            Register::L => self.register.l = value,
+            Register::F => self.register.f = value,
+            _ => println!("Invalid register")
+   
+        }
+    }
+    pub fn get_r16(&self, reg: &Register) -> u16{
+        match reg {
+            Register::BC => self.register.get_bc(),
+            Register::DE => self.register.get_de(),
+            Register::HL => self.register.get_hl(),
+            _ => 0
+
+        }
+    }
+    pub fn set_r16(&mut self, reg: &Register, value: u16){
+        match reg {
+            Register::BC => self.register.set_bc(value),
+            Register::DE => self.register.set_de(value),
+            Register::HL => self.register.set_hl(value),
+            _ => println!("Invalid register")
+
         }
     }
 
-    fn ld_sp_n16(&mut self){
-        let low_bytes: u8 = self.bus.read(self.pc);
-        self.pc += 1;
-        let high_bytes: u8 = self.bus.read(self.pc);
-        self.pc += 1;
+    pub fn decode_register(&self, index: u8) -> Register{
+        match index {
+            0b000 => Register::B,
+            0b001 => Register::C,
+            0b010 => Register::D,
+            0b011 => Register::E,
+            0b100 => Register::H,
+            0b101 => Register::L,
+            0b110 => Register::HL,
+            0b111 => Register::A, 
+            _ => todo!() 
 
-        let n16: u16 = (high_bytes as u16) << 8 | low_bytes as u16;
-
-        self.sp = n16;
-    }
-    fn xor_a(&mut self) {
-        self.register.a ^= self.register.a;
-        self.register.f = 1 << 7; // 
-    }
-    
-    fn ld_hl_n16(&mut self){
-        let low_bytes: u8 = self.bus.read(self.pc);
-        self.pc += 1;
-        let high_bytes: u8 = self.bus.read(self.pc);
-        self.pc += 1;
-
-        self.register.h = high_bytes;
-        self.register.l = low_bytes;
-    }
-    fn ld_hld_a(&mut self){
-        self.bus.write(self.register.get_hl(),self.register.a);
-        let new_hl: u16 = self.register.get_hl() - 1;
-        self.register.set_hl(new_hl);
-    }
-    fn bit_7_h(&mut self) {
-        let bit: u8 = (self.register.h >> 7) & 1; 
-        if bit == 1 {
-            self.register.f &= !(1 << 7); 
-        } else if bit == 0 {
-            self.register.f |= 1 << 7; 
-        }
-
-    }
-    
-    fn jr_nz_i8(&mut self) {
-        let offset = self.bus.read(self.pc) as i8;
-        self.pc += 1;
-        if (self.register.f & (1 << 7)) == 0 { 
-            self.pc = self.pc.wrapping_add(offset as i16 as u16); 
         }
     }
 
-    
 
 }
