@@ -18,10 +18,11 @@ pub struct Bus {
 
     pub cartridge: [u8; 0x7FFF + 1],
     pub vram: [u8; 0x1FFF + 1],
+    pub eram: [u8; 0x1FFF + 1],
     pub wram: [u8; 0x1FFF + 1],
-    pub oam: [u8; 0x10 + 1],
-    pub io: [u8; 0x80 + 1],
-    pub hram: [u8; 0x7F + 1],
+    pub oam: [u8; 0x9F + 1],
+    pub io: [u8; 0x7F + 1],
+    pub hram: [u8; 0x7E + 1],
     pub ie: u8,
 }
 
@@ -31,10 +32,11 @@ impl Bus {
             boot_rom: [0; 0xFF + 1],
             cartridge: [0; 0x7FFF + 1],
             vram: [0; 0x1FFF + 1],
+            eram: [0; 0x1FFF + 1],
             wram: [0; 0x1FFF + 1],
-            oam: [0; 0x10 + 1],
-            io: [0; 0x80 + 1],
-            hram: [0; 0x7F + 1],
+            oam: [0; 0x9F + 1],
+            io: [0; 0x7F + 1],
+            hram: [0; 0x7E + 1],
             ie: 0,
         }
     }
@@ -46,20 +48,31 @@ impl Bus {
             } else {
                 return self.cartridge[addr as usize];
             }
+
         } else if addr < 0xA000 { // VRAM
             return self.vram[(addr - 0x8000) as usize];
+
         } else if addr < 0xC000 { // External RAM
-            todo!();
-        } else if addr < 0xDFFF { // WRAM
+            return self.vram[(addr - 0xA000) as usize];
+
+        } else if addr < 0xE000 { // WRAM
             return self.wram[(addr - 0xC000) as usize];
-        } else if addr < 0xFDFF { // Echo RAM
-            todo!();
-        } else if addr < 0xFF00 { // OAM
+
+        } else if addr < 0xFE00 { // Echo RAM
+            return self.wram[(addr - 0xE000) as usize];
+
+        } else if addr < 0xFEA0 { // OAM
             return self.oam[(addr - 0xFE00) as usize];
-        } else if addr < 0xFF7F { // I/O Registers
+
+        } else if addr < 0xFF00 { // Unused
+            return 0;
+
+        } else if addr < 0xFF80 { // I/O Registers
             return self.io[(addr - 0xFF00) as usize];
+
         } else if addr < 0xFFFF { // HRAM
             return self.hram[(addr - 0xFF80) as usize];
+
         } else { // Interrupt Enable Register
             return self.ie;
         }
@@ -69,20 +82,31 @@ impl Bus {
     pub fn write(&mut self, addr: u16, data: u8) {
         if addr < 0x8000 { // Cartridge
             self.cartridge[addr as usize] = data;
+
         } else if addr < 0xA000 { // VRAM
             self.vram[(addr - 0x8000) as usize] = data;
+
         } else if addr < 0xC000 { // External RAM
-            todo!();
-        } else if addr < 0xDFFF { // WRAM
+            self.eram[(addr - 0xA000) as usize] = data;
+
+        } else if addr < 0xE000 { // WRAM
             self.wram[(addr - 0xC000) as usize] = data;
-        } else if addr < 0xFDFF { // Echo RAM
-            todo!();
-        } else if addr < 0xFF00 { // OAM
+
+        } else if addr < 0xFE00 { // Echo RAM
+            self.wram[(addr - 0xE000) as usize] = data;
+
+        } else if addr < 0xFEA0 { // OAM
             self.oam[(addr - 0xFE00) as usize] = data;
-        } else if addr < 0xFF7F { // I/O Registers
+        
+        } else if addr < 0xFF00 { // Unused
+            println!("Illegal!");
+
+        } else if addr < 0xFF80 { // I/O Registers
             self.io[(addr - 0xFF00) as usize] = data;
+
         } else if addr < 0xFFFF { // HRAM
             self.hram[(addr - 0xFF80) as usize] = data;
+
         } else { // Interrupt Enable Register
             self.ie = data;
         }
