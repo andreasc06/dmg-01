@@ -1,5 +1,7 @@
 
-use crate::bus::Bus;
+use core::panic;
+
+use crate::{bus::Bus, instructions::{bit_u3_r8, jr_cc_n16, ld_hld_a, ld_r16_n16, ld_sp_n16, xor_a_r8}};
 
 pub enum Register {
     A, B, C, D, E, H, L, F,
@@ -51,6 +53,16 @@ impl Registers {
         self.h = (value >> 8) as u8;
         self.l = (value & 0xFF) as u8;
     }
+    pub fn set_flag(&mut self, bit: u8, value: bool){
+        if value {
+            self.f |= 1 << bit;
+        } else {
+            self.f &= !(1 << bit);
+        }
+    }
+    pub fn get_flag(&self, bit: u8) -> u8{
+        return self.f & (1 << bit);
+    }
 
 }
 
@@ -67,14 +79,34 @@ impl CPU {
     pub fn boot(&mut self){
         let mut loops: i32 = 0;
         loop {
-            let current_instruction = self.fetch_n8();   
+            let current_instruction = self.fetch_n8(); 
 
-            println!();
-            println!("Current loop: {}", loops);
-            println!("Current Instruction: {:#x}", current_instruction);
-            println!("PC: {:X} SP: {:X}", self.pc, self.sp);
-            println!("A: {:X} F: {:X} B: {:X} C: {:X} D: {:X} E: {:X} H: {:X} L: {:X}", self.register.a, self.register.f, self.register.b, self.register.c, self.register.d, self.register.e, self.register.h, self.register.l);
-            println!();
+            match current_instruction {
+                0x31 => ld_sp_n16(self, current_instruction),
+                0xAF => xor_a_r8(self, current_instruction),
+                0x21 => ld_r16_n16(self, current_instruction),
+                0x32 => ld_hld_a(self, current_instruction),
+                0xCB => {
+                    let next_instruction = self.fetch_n8();
+                    match next_instruction {
+                        0x7c => bit_u3_r8(self, next_instruction),
+                        _ => panic!()
+                    }
+                }
+                0x20 => jr_cc_n16(self, current_instruction),
+                _ =>  {           
+                println!();
+                println!("Current loop: {}", loops);
+                println!("Current Instruction: {:#x}", current_instruction);
+                println!("PC: {:X} SP: {:X}", self.pc, self.sp);
+                println!("A: {:X} F: {:X} B: {:X} C: {:X} D: {:X} E: {:X} H: {:X} L: {:X}", self.register.a, self.register.f, self.register.b, self.register.c, self.register.d, self.register.e, self.register.h, self.register.l);
+                println!("Flags in binary: {:08b}", self.register.f);
+                println!();
+                panic!("Invalid instruction")
+                
+                }
+            }
+
             loops += 1;
         }
     }
@@ -89,6 +121,9 @@ impl CPU {
     }
     pub fn set_pc(&mut self, value: u16){
         self.pc = value;
+    }
+    pub fn offset_pc(&mut self, offset: i8){
+        self.pc = self.pc.wrapping_add(offset as u16);
     }
 
     pub fn get_r8(&self, reg: &Register) -> u8{
