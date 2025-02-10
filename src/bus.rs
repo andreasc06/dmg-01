@@ -81,7 +81,11 @@ impl Bus {
 
     pub fn write(&mut self, addr: u16, data: u8) {
         if addr < 0x8000 { // Cartridge
-            self.cartridge[addr as usize] = data;
+            if addr < 0x100 && self.io[0xFF50 - 0xFF00] == 0 {
+                self.boot_rom[addr as usize] = data;
+            } else {
+                self.cartridge[addr as usize] = data;
+            }
 
         } else if addr < 0xA000 { // VRAM
             self.vram[(addr - 0x8000) as usize] = data;
@@ -111,4 +115,6 @@ impl Bus {
             self.ie = data;
         }
     }
+
+
 }
