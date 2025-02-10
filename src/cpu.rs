@@ -67,7 +67,7 @@ impl CPU {
     pub fn boot(&mut self){
         let mut loops: i32 = 0;
         loop {
-            let current_instruction = self.fetch_n8();
+            let current_instruction = self.fetch_n8();   
 
             println!();
             println!("Current loop: {}", loops);
@@ -75,14 +75,13 @@ impl CPU {
             println!("PC: {:X} SP: {:X}", self.pc, self.sp);
             println!("A: {:X} F: {:X} B: {:X} C: {:X} D: {:X} E: {:X} H: {:X} L: {:X}", self.register.a, self.register.f, self.register.b, self.register.c, self.register.d, self.register.e, self.register.h, self.register.l);
             println!();
-
             loops += 1;
         }
     }
 
     pub fn fetch_n8(&mut self) -> u8{
         let n8: u8 = self.bus.read(self.pc);
-        self.pc += 1;
+        self.pc = self.pc.wrapping_add(0x1);
         return n8;
     }
     pub fn set_sp(&mut self, value: u16){
