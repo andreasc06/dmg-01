@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::cpu::{Register, CPU};
 
 struct Instructions {
@@ -209,3 +211,54 @@ pub fn ld_sp_hl(cpu: &mut CPU, opcode: u8){
     cpu.set_sp(cpu.get_r16(&Register::HL));
 
 }
+
+// 8-bit arthimetc
+
+pub fn xor_a_r8(cpu: &mut CPU, opcode: u8){
+    // XOR the value in register r8 with the value in register A and store the result in register A.
+    let r8: u8 = opcode & 0b0000_0111;
+
+    let r8_register: Register = cpu.decode_register(r8);
+
+    let result: u8 = cpu.get_r8(&Register::A) ^ cpu.get_r8(&r8_register);
+
+    cpu.set_r8(&Register::A, result);
+
+}
+
+// bitwise logic
+pub fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
+    // Test the value in register r8 against the bit specified by u3.
+    let u3: u8 = (opcode >> 3) & 0b0000_0111;
+    let r8: u8 = opcode & 0b0000_0111;
+
+    let r8_register: Register = cpu.decode_register(r8);
+
+    let value: u8 = cpu.get_r8(&r8_register);
+
+    let result: u8 = value & (1 << u3);
+
+    cpu.register.set_flag(7, result == 0);
+
+}
+
+
+// jump and subroutine 
+pub fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
+    // Jump to the address PC + n16 if the condition specified by CC is met.
+
+    let offset: i8 = cpu.fetch_n8() as i8;
+
+    let expected_output: u8 = (opcode >> 3) & 0b0000_0001; // expected output of the condition
+    let condition: u8 = (opcode >> 4) & 0b0000_0011; // condition to check
+
+    let condition_index = match condition {
+        0b10 => 7, // Zero flag
+        0b11 => 4, // Carry flag
+        _=> panic!("Invalid condition"),
+    };
+
+    if cpu.register.get_flag(condition_index) == expected_output {
+            cpu.offset_pc(offset);
+        }
+    }
