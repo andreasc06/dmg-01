@@ -8,7 +8,6 @@ struct Instructions {
     pub execute: fn(&mut CPU, u8)
 }
 
-
 pub fn ld_r8_r8(cpu: &mut CPU, opcode: u8){
     // Copy (aka Load) the value in register on the right into the register on the left.
     let src: u8 = opcode & 0b0000_0111;
@@ -213,7 +212,34 @@ pub fn ld_sp_hl(cpu: &mut CPU, opcode: u8){
 }
 
 // 8-bit arthimetc
+pub fn inc_r8(cpu: &mut CPU, opcode: u8){
+    // Increment the value in register r8.
+    let r8 = (opcode >> 3) & 0b0000_0111;
 
+    let r8_register: Register = cpu.decode_register(r8);
+
+    let value: u8 = cpu.get_r8(&r8_register).wrapping_add(1);
+    cpu.set_r8(&r8_register, value);
+}
+pub fn dec_r8(cpu: &mut CPU, opcode: u8){
+    // Decrement the value in register r8.
+    let r8 = (opcode >> 3) & 0b0000_0111;
+
+    let r8_register: Register = cpu.decode_register(r8);
+
+    let value: u8 = cpu.get_r8(&r8_register).wrapping_sub(1);
+    cpu.set_r8(&r8_register, value);
+}
+pub fn sub_r8(cpu: &mut CPU, opcode: u8){
+    // Subtract the value in register r8 from the value in register A and store the result in register A.
+    let r8: u8 = opcode & 0b0000_0111;
+
+    let r8_register: Register = cpu.decode_register(r8);
+
+    let result: u8 = cpu.get_r8(&Register::A).wrapping_sub(cpu.get_r8(&r8_register));
+    cpu.set_r8(&Register::A, result);
+
+}
 pub fn xor_a_r8(cpu: &mut CPU, opcode: u8){
     // XOR the value in register r8 with the value in register A and store the result in register A.
     let r8: u8 = opcode & 0b0000_0111;
