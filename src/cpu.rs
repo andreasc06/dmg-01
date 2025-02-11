@@ -1,7 +1,7 @@
 
 use core::panic;
 
-use crate::{bus::Bus, instructions::{bit_u3_r8, jr_cc_n16, ld_hld_a, ld_r16_n16, ld_sp_n16, xor_a_r8}};
+use crate::{bus::Bus, instructions::{bit_u3_r8, inc_r8, jr_cc_n16, ld_hl_r8, ld_hld_a, ld_n16_a, ld_r16_n16, ld_r8_n8, ld_sp_n16, ldh_c_a, ldh_n16_a, xor_a_r8}};
 
 pub enum Register {
     A, B, C, D, E, H, L, F,
@@ -94,6 +94,14 @@ impl CPU {
                     }
                 }
                 0x20 => jr_cc_n16(self, current_instruction),
+                0x0E => ld_r8_n8(self, current_instruction),
+                0x3E => ld_r8_n8(self, current_instruction),
+                0xE2 => ldh_c_a(self, current_instruction),
+                0x0C => inc_r8(self, current_instruction),
+                0x77 => ld_hl_r8(self, current_instruction),
+                0xE0 => ldh_n16_a(self, current_instruction),
+                0x11 => ld_r16_n16(self, current_instruction),
+
                 _ =>  {           
                 println!();
                 println!("Current loop: {}", loops);
@@ -101,7 +109,6 @@ impl CPU {
                 println!("PC: {:X} SP: {:X}", self.pc, self.sp);
                 println!("A: {:X} F: {:X} B: {:X} C: {:X} D: {:X} E: {:X} H: {:X} L: {:X}", self.register.a, self.register.f, self.register.b, self.register.c, self.register.d, self.register.e, self.register.h, self.register.l);
                 println!("Flags in binary: {:08b}", self.register.f);
-                println!();
                 panic!("Invalid instruction")
                 
                 }
