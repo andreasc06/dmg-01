@@ -1,194 +1,268 @@
 use core::panic;
 
-use crate::cpu::{Register, CPU};
+use crate::cpu::CPU;
+use crate::registers::{Register,Flag};
 
-struct Instructions {
-    pub opcode: u8,
-    pub name: &'static str,
-    pub execute: fn(&mut CPU, u8)
+
+
+pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
+
+    let ins = cpu.get_pc() - 1;
+
+    match opcode {
+
+        0x31 => ld_sp_n16(cpu, opcode), // LD SP n16
+        0xAF => xor_a_r8(cpu, opcode), // XOR A, A
+        0x21 => ld_r16_n16(cpu, opcode), // LD HL, n16
+        0x32 => ld_hld_a(cpu, opcode), // LD (HL-), A
+        0x20 => jr_cc_n16(cpu, opcode), // JR NZ, e8
+        0x0E => ld_r8_n8(cpu, opcode), // LD C, n8
+        0x3E => ld_r8_n8(cpu, opcode), // LD A, n8
+        0xE2 => ldh_c_a(cpu, opcode), // LDH (C), A
+        0x0C => inc_r8(cpu, opcode), // INC C
+        0x77 => ld_hl_r8(cpu, opcode), // LD (HL), A
+        0xE0 => ldh_n16_a(cpu, opcode), // LDH (a8), A
+        0x11 => ld_r16_n16(cpu, opcode), // LD DE, n16
+        0x1A => ld_a_r16(cpu, opcode), // LD A, (r16)
+        0xCD => call(cpu, opcode), // CALL n16
+        0x4F => ld_r8_r8(cpu, opcode), // LD C, A
+        0x06 => ld_r8_n8(cpu, opcode), // LD B, n8
+        0xC5 => push_r16(cpu, opcode), // PUSH BC
+        0x17 => rl_r8(cpu, opcode), // RLA
+        0xC1 => pop_r16(cpu, opcode), // POP BC
+        0x05 => dec_r8(cpu, opcode), // DEC B
+        0x22 => ld_hli_a(cpu, opcode), // LD (HL+) A
+        0x23 => inc_r16(cpu, opcode), // INC HL
+        0xC9 => ret(cpu, opcode), // RET
+
+        0xCB => {
+
+            let next = cpu.fetch_n8();
+
+            match next {
+                0x7C => bit_u3_r8(cpu, next), // BIT 7 H
+                0x11 => rl_r8(cpu, next), // RL C
+                _ => panic!("Unknown CB opcode: 0x{:02X} at 0x{:02X}", opcode, ins), // Handle unknown opcode
+            }
+
+
+        }
+        _ => panic!("Unknown opcode: 0x{:02X} at 0x{:02X}", opcode, ins), // Handle unknown opcode
+    }
 }
 
-pub fn ld_r8_r8(cpu: &mut CPU, opcode: u8){
+// Load instructions
+fn ld_r8_r8(cpu: &mut CPU, opcode: u8){
     // Copy (aka Load) the value in register on the right into the register on the left.
+    // Cycles: 1 -- Bytes: 1 -- Flags: None
     let src: u8 = opcode & 0b0000_0111;
     let des: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let src_register: Register = cpu.decode_register(src);
-    let des_register: Register = cpu.decode_register(des);
+    let src_register: Register = cpu.register.decode_register_8(src);
+    let des_register: Register = cpu.register.decode_register_8(des);
 
-    cpu.set_r8(&des_register, cpu.get_r8(&src_register));
+    let value = cpu.register.get_8(&src_register);
+    cpu.register.set_8(&des_register, value);
 }
 
-pub fn ld_r8_n8(cpu: &mut CPU, opcode: u8) {
+fn ld_r8_n8(cpu: &mut CPU, opcode: u8) {
     // Copy the value n8 into register r8.
+    // Cycles: 2 -- Bytes: 2 -- Flags: None
 
     let n8 = cpu.fetch_n8();
-    let register_byte: u8 = (opcode >> 3) & 0b0000_0111;
+    let des: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let register: Register = cpu.decode_register(register_byte);
+    let des_register: Register = cpu.register.decode_register_8(des);
 
-    cpu.set_r8(&register,n8);
+
+    cpu.register.set_8(&des_register,n8);
 
 }
 
-pub fn ld_r16_n16(cpu: &mut CPU, opcode: u8){
+fn ld_r16_n16(cpu: &mut CPU, opcode: u8){
     // Copy the value n16 into register r16.
+    // Cycles: 3 -- Bytes: 3 -- Flags: None
 
     let des: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let register = match cpu.decode_register(des) {
-        Register::B => Register::BC,
-        Register::D => Register::DE,
-        Register::H => Register::HL,
-        _ => panic!(),
-    };
+    let register = cpu.register.decode_register_16(des);
 
-    let low_bytes: u8 = cpu.fetch_n8();
-    let high_bytes: u8 = cpu.fetch_n8();
+    let low_byte: u8 = cpu.fetch_n8();
+    let high_byte: u8 = cpu.fetch_n8();
 
-    let n16: u16 = (high_bytes as u16) << 8 | low_bytes as u16;
+    let n16: u16 = (high_byte as u16) << 8 | low_byte as u16;
 
-    cpu.set_r16(&register, n16);
+    cpu.register.set_16(&register, n16);
 }
 
-pub fn ld_hl_r8(cpu: &mut CPU, opcode: u8){
+fn ld_hl_r8(cpu: &mut CPU, opcode: u8){
     // Copy the value in register r8 into the byte pointed to by HL.
+    // Cycles: 3 -- Bytes: 2 -- Flags: None
 
-    let r8: u8 = (opcode >> 3) & 0b0000_0111;
+    let src: u8 = (opcode ) & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let src_register: Register = cpu.register.decode_register_8(src);
 
-    cpu.bus.write(cpu.get_r16(&Register::HL), cpu.get_r8(&r8_register));
+    cpu.bus.write(cpu.register.get_16(&Register::HL), cpu.register.get_8(&src_register));
 }
 
-pub fn ld_hl_n8(cpu: &mut CPU, opcode: u8){
+fn ld_hl_n8(cpu: &mut CPU, opcode: u8){
     // Copy the value n8 into the byte pointed to by HL.
+    // Cycles: 3 -- Bytes: 2 -- Flags: None
+
     let n8: u8 = cpu.fetch_n8();
 
-    cpu.bus.write(cpu.get_r16(&Register::HL), n8);
+    cpu.bus.write(cpu.register.get_16(&Register::HL), n8);
 }
 
-pub fn ld_r8_hl(cpu: &mut CPU, opcode: u8){
+fn ld_r8_hl(cpu: &mut CPU, opcode: u8){
     // Copy the value pointed to by HL into register r8.
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
 
-    let r8: u8 = (opcode >> 3) & 0b0000_0111;
+    let des: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let des_register: Register = cpu.register.decode_register_8(des);
 
-    let value: u8 = cpu.bus.read(cpu.get_r16(&Register::HL));
+    let value: u8 = cpu.bus.read(cpu.register.get_16(&Register::HL));
 
-    cpu.set_r8(&r8_register, value);
+    cpu.register.set_8(&des_register, value);
 }
 
-pub fn ld_r16_a(cpu: &mut CPU, opcode: u8){
+fn ld_r16_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte pointed to by r16.
-    let r16: u8 = (opcode >> 3) & 0b0000_0111;
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+    let des: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let register = match cpu.decode_register(r16) {
-        Register::B => Register::BC,
-        Register::D => Register::DE,
-        Register::H => Register::HL,
-        _ => panic!(),
-    };
+    let des_register= cpu.register.decode_register_16(des);
 
-    cpu.bus.write(cpu.get_r16(&register), cpu.get_r8(&Register::A));
+    let addr = cpu.register.get_16(&des_register);
+    let data = cpu.register.get_8(&Register::A);
+    cpu.bus.write(addr, data);
 }
 
-pub fn ld_n16_a(cpu: &mut CPU, opcode: u8){
+fn ld_n16_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte at address n16.
+    // Cycles: 4 -- Bytes: 3 -- Flags: None
     
-    let low_bytes: u8 = cpu.fetch_n8();
-    let high_bytes: u8 = cpu.fetch_n8();
+    let low_byte: u8 = cpu.fetch_n8();
+    let high_byte: u8 = cpu.fetch_n8();
 
-    let n16: u16 = (high_bytes as u16) << 8 | low_bytes as u16;
+    let addr: u16 = (high_byte as u16) << 8 | low_byte as u16;
+    let data: u8 = cpu.register.get_8(&Register::A);
 
-    cpu.bus.write(n16, cpu.get_r8(&Register::A));
+    cpu.bus.write(addr, data);
 }
 
-pub fn ldh_n16_a(cpu: &mut CPU, opcode: u8){
+fn ldh_n16_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte at address n16, provided the address is between $FF00 and $FFFF.
+    // Cycles: 3 -- Bytes: 2 -- Flags: None
+
     let byte: u8 = cpu.fetch_n8();
+
+    let addr = 0xFF00 + byte as u16;
+    let data = cpu.register.get_8(&Register::A);
     
-    cpu.bus.write(0xFF00 + byte as u16, cpu.get_r8(&Register::A));  
+    cpu.bus.write(addr, data);
 }
 
-pub fn ldh_c_a(cpu: &mut CPU, opcode: u8){
+fn ldh_c_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte at address $FF00+C.
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
 
-    let adr: u16 = 0xFF00 + (cpu.get_r8(&Register::C) as u16);
+    let addr: u16 = 0xFF00 + (cpu.register.get_8(&Register::C) as u16);
+    let data = cpu.register.get_8(&Register::A);
 
-    cpu.bus.write(adr, cpu.get_r8(&Register::A));
+    cpu.bus.write(addr, data);
 }
 
-pub fn ld_a_r16(cpu: &mut CPU, opcode: u8){
+fn ld_a_r16(cpu: &mut CPU, opcode: u8){
     // Copy the byte pointed to by r16 into register A.
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
 
-    let r16: u8 = (opcode >> 3) & 0b0000_0111;
+    let src: u8 = (opcode >> 3) & 0b0000_0111;
 
-    let register = match cpu.decode_register(r16) {
-        Register::B => Register::BC,
-        Register::D => Register::DE,
-        Register::H => Register::HL,
-        _ => panic!(),
-    };
+    let src_register= cpu.register.decode_register_16(src);
 
-    let value: u8 = cpu.bus.read(cpu.get_r16(&register));
-    cpu.set_r8(&Register::A, value);
+    let value: u8 = cpu.bus.read(cpu.register.get_16(&src_register));
+    cpu.register.set_8(&Register::A, value);
 }
 
-pub fn ld_a_n16(cpu: &mut CPU, opcode: u8){
+fn ld_a_n16(cpu: &mut CPU, opcode: u8){
     // Copy the byte at address n16 into register A.
+    // Cycles: 4 -- Bytes: 3 -- Flags: None
+
+    let high_byte: u8 = cpu.fetch_n8();
+    let low_byte: u8 = cpu.fetch_n8();
+
+    let addr: u16 = (high_byte as u16) << 8 | low_byte as u16;
+    let value: u8 = cpu.bus.read(addr);
+
+    cpu.register.set_8(&Register::A, value);
+}
+
+fn ldh_a_n16(cpu: &mut CPU, opcode: u8){
+    // Copy the byte at address n16 into register A.
+    // Cycles: 3 -- Bytes: 2 -- Flags: None
 
     let byte: u8 = cpu.fetch_n8();
 
     let value: u8 = cpu.bus.read(0xFF00 + (byte as u16));
 
-    cpu.set_r8(&Register::A, value);
+    cpu.register.set_8(&Register::A, value);
 }
 
-pub fn ldh_a_c(cpu: &mut CPU, opcode: u8){
+fn ldh_a_c(cpu: &mut CPU, opcode: u8){
     // Copy the byte at address $FF00+C into register A.
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
 
-    let value: u8 = cpu.bus.read(0xFF00 +( cpu.get_r8(&Register::C) as u16));
-    cpu.set_r8(&Register::A, value);
+    let value: u8 = cpu.bus.read(0xFF00 + (cpu.register.get_8(&Register::C) as u16));
+    cpu.register.set_8(&Register::A, value);
 }
 
-pub fn ld_hli_a(cpu: &mut CPU, opcode: u8){
+fn ld_hli_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte pointed by HL and increment HL afterwards.
-    let hl: u16 = cpu.get_r16(&Register::HL);
-    let data: u8 = cpu.get_r8(&Register::A);
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+
+    let hl: u16 = cpu.register.get_16(&Register::HL);
+    let data: u8 = cpu.register.get_8(&Register::A);
     cpu.bus.write(hl, data);
-    cpu.set_r16(&Register::HL, hl + 1);
+    cpu.register.set_16(&Register::HL, hl + 1);
 }
 
-pub fn ld_hld_a(cpu: &mut CPU, opcode: u8){
+fn ld_hld_a(cpu: &mut CPU, opcode: u8){
     // Copy the value in register A into the byte pointed by HL and decrement HL afterwards.
-    let hl: u16 = cpu.get_r16(&Register::HL);
-    let data: u8 = cpu.get_r8(&Register::A);
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+
+    let hl: u16 = cpu.register.get_16(&Register::HL);
+    let data: u8 = cpu.register.get_8(&Register::A);
     cpu.bus.write(hl, data);
-    cpu.set_r16(&Register::HL, hl - 1);
+    cpu.register.set_16(&Register::HL, hl - 1);
 }
 
-pub fn ld_a_hld(cpu: &mut CPU, opcode: u8){
+fn ld_a_hld(cpu: &mut CPU, opcode: u8){
     //Copy the byte pointed to by HL into register A, and decrement HL afterwards.
-    let hl: u16 = cpu.get_r16(&Register::HL);
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+
+    let hl: u16 = cpu.register.get_16(&Register::HL);
     let value: u8 = cpu.bus.read(hl);
 
-    cpu.set_r8(&Register::A, value);
-    cpu.set_r16(&Register::HL, hl - 1);
+    cpu.register.set_8(&Register::A, value);
+    cpu.register.set_16(&Register::HL, hl - 1);
 }
 
-pub fn ld_a_hdi(cpu: &mut CPU, opcode: u8){
+fn ld_a_hdi(cpu: &mut CPU, opcode: u8){
     // Copy the byte pointed to by HL into register A, and increment HL afterwards.
-    let hl: u16 = cpu.get_r16(&Register::HL);
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+    let hl: u16 = cpu.register.get_16(&Register::HL);
     let value: u8 = cpu.bus.read(hl);
 
-    cpu.set_r8(&Register::A, value);
-    cpu.set_r16(&Register::HL, hl + 1); 
+    cpu.register.set_8(&Register::A, value);
+    cpu.register.set_16(&Register::HL, hl + 1); 
 }
 
-pub fn ld_sp_n16(cpu: &mut CPU, opcode: u8){  
+fn ld_sp_n16(cpu: &mut CPU, opcode: u8){  
     // Copy the value n16 into register SP.
+    // Cycles: 3 -- Bytes: 3 -- Flags: None
     let low_bytes: u8 = cpu.fetch_n8();
     let high_bytes: u8 = cpu.fetch_n8();
 
@@ -197,94 +271,216 @@ pub fn ld_sp_n16(cpu: &mut CPU, opcode: u8){
     cpu.set_sp(n16);
 }
 
-pub fn ld_n16_sp(cpu: &mut CPU, opcode: u8){
+fn ld_n16_sp(cpu: &mut CPU, opcode: u8){
     // Copy SP & $FF at address n16 and SP >> 8 at address n16 + 1.
+    // Cycles: 5 -- Bytes: 2 -- Flags: None
     todo!();
 }
-pub fn ld_hl_sp_add_e8(cpu: &mut CPU, opcode: u8){
+fn ld_hl_sp_add_e8(cpu: &mut CPU, opcode: u8){
     // Add the signed value e8 to SP and copy the result in HL.
+    // Cycles: 3 -- Bytes: 2 -- Flags: H set if overflow from bit 3, C set if overflow from bit 7
     todo!();
 }
-pub fn ld_sp_hl(cpu: &mut CPU, opcode: u8){
+fn ld_sp_hl(cpu: &mut CPU, opcode: u8){
     // Copy register HL into register SP.
-    cpu.set_sp(cpu.get_r16(&Register::HL));
+    // Cycles: 2 -- Bytes: 1 -- Flags: None
+
+    cpu.set_sp(cpu.register.get_16(&Register::HL));
 
 }
 
 // 8-bit arthimetc
-pub fn inc_r8(cpu: &mut CPU, opcode: u8){
+fn inc_r8(cpu: &mut CPU, opcode: u8){
     // Increment the value in register r8.
+    // Cycles: 1 -- Bytes: 1 -- Flags: Z set if result is 0, N 0, H set if overflow from bit 3
     let r8 = (opcode >> 3) & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let r8_register: Register = cpu.register.decode_register_8(r8);
 
-    let value: u8 = cpu.get_r8(&r8_register).wrapping_add(1);
-    cpu.set_r8(&r8_register, value);
+    let value: u8 = cpu.register.get_8(&r8_register).wrapping_add(1);
+    cpu.register.set_8(&r8_register, value);
+
 }
-pub fn dec_r8(cpu: &mut CPU, opcode: u8){
+
+fn inc_r16(cpu: &mut CPU, opcode: u8){
+    // Increment the value in register r16 by 1.
+    // Cycles: 2 -- Bytes: 1: Flags: None
+    let r16 = (opcode >> 3) & 0b0000_0111;
+
+    let r16_register: Register = cpu.register.decode_register_16(r16);
+
+    let value = cpu.register.get_16(&r16_register) + 1;
+    cpu.register.set_16(&r16_register, value);
+}
+
+fn dec_r8(cpu: &mut CPU, opcode: u8){
     // Decrement the value in register r8.
+    // Cycles: 1, Bytes: 1, Flags: Z: set if result is 0, N 1, H set if borrow from bit 4
     let r8 = (opcode >> 3) & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let r8_register: Register = cpu.register.decode_register_8(r8);
 
-    let value: u8 = cpu.get_r8(&r8_register).wrapping_sub(1);
-    cpu.set_r8(&r8_register, value);
+    let value: u8 = cpu.register.get_8(&r8_register).wrapping_sub(1);
+    cpu.register.set_8(&r8_register, value);
+    
+    cpu.register.set_flag(&Flag::Z, value != 0);
+
 }
-pub fn sub_r8(cpu: &mut CPU, opcode: u8){
+
+fn sub_r8(cpu: &mut CPU, opcode: u8){
     // Subtract the value in register r8 from the value in register A and store the result in register A.
+    // Cycles: 1, Bytes: 1, Flags: Z: set if result is 0, N 1, H set if borrow from bit 4, C set if borrow (ie r8 > A)
     let r8: u8 = opcode & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let r8_register: Register = cpu.register.decode_register_8(r8);
 
-    let result: u8 = cpu.get_r8(&Register::A).wrapping_sub(cpu.get_r8(&r8_register));
-    cpu.set_r8(&Register::A, result);
-
-}
-pub fn xor_a_r8(cpu: &mut CPU, opcode: u8){
-    // XOR the value in register r8 with the value in register A and store the result in register A.
-    let r8: u8 = opcode & 0b0000_0111;
-
-    let r8_register: Register = cpu.decode_register(r8);
-
-    let result: u8 = cpu.get_r8(&Register::A) ^ cpu.get_r8(&r8_register);
-
-    cpu.set_r8(&Register::A, result);
+    let result: u8 = cpu.register.get_8(&Register::A).wrapping_sub(cpu.register.get_8(&r8_register));
+    cpu.register.set_8(&Register::A, result);
 
 }
 
-// bitwise logic
-pub fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
-    // Test the value in register r8 against the bit specified by u3.
-    let u3: u8 = (opcode >> 3) & 0b0000_0111;
+fn xor_a_r8(cpu: &mut CPU, opcode: u8){
+    // XOR the value in register r8 with the value in register A and store the result in register A
+    // Cycles: 1, Bytes: 1, Flags: Z: set if result is 0, N 0, H 0, C 0
     let r8: u8 = opcode & 0b0000_0111;
 
-    let r8_register: Register = cpu.decode_register(r8);
+    let r8_register: Register = cpu.register.decode_register_8(r8);
 
-    let value: u8 = cpu.get_r8(&r8_register);
+    let result: u8 = cpu.register.get_8(&Register::A) ^ cpu.register.get_8(&r8_register);
 
-    let result: u8 = value & (1 << u3);
-
-    cpu.register.set_flag(7, result == 0);
-
+    cpu.register.set_8(&Register::A, result);
 }
-
 
 // jump and subroutine 
-pub fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
+fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
     // Jump to the address PC + n16 if the condition specified by CC is met.
+    // Cycles: 3 met else 2 -- Bytes: 2 -- Flags None
 
     let offset: i8 = cpu.fetch_n8() as i8;
 
-    let expected_output: u8 = (opcode >> 3) & 0b0000_0001; // expected output of the condition
+    let expected_output: bool = ((opcode >> 3) & 0b0000_0001) == 1; // expected output of the condition
     let condition: u8 = (opcode >> 4) & 0b0000_0011; // condition to check
 
     let condition_index = match condition {
-        0b10 => 7, // Zero flag
-        0b11 => 4, // Carry flag
+        0b10 => Flag::Z, // Zero flag
+        0b11 => Flag::C, // Carry flag
         _=> panic!("Invalid condition"),
     };
 
-    if cpu.register.get_flag(condition_index) == expected_output {
+
+    if cpu.register.get_flag(&condition_index) == expected_output {
             cpu.offset_pc(offset);
         }
     }
+
+fn call(cpu: &mut CPU, opcode: u8){
+    // Call address n16.
+    // Cycles: 3 met else 2 -- Bytes: 2 -- Flags None
+    let low_bytes: u8 = cpu.fetch_n8();
+    let high_bytes: u8 = cpu.fetch_n8();
+
+    let n16: u16 = (high_bytes as u16) << 8 | low_bytes as u16;
+
+    cpu.push_stack16(cpu.get_pc());
+
+    cpu.set_pc(n16);
+
+}
+
+// Stack manipulatiuon
+fn push_r16(cpu: &mut CPU, opcode: u8) {
+    // Push register r16 into the stack
+    //Cycles: 4 -- Bytes: 1 -- Flags: None
+
+    let r16_index = (opcode >> 3) & 0b0000_0111;
+
+    let register= cpu.register.decode_register_16(r16_index);
+
+    let value: u16 = cpu.register.get_16(&register);
+
+    cpu.push_stack16(value);
+
+}
+
+
+// bitwise logic
+fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
+    // Test the value in register r8 against the bit specified by u3.
+    // Cycles: 2 -- Bytes: 2, Flags: Z if selected bit is 0, N 0, H, 1
+    let u3: u8 = (opcode >> 3) & 0b0000_0111;
+    let r8: u8 = opcode & 0b0000_0111;
+
+    let r8_register: Register = cpu.register.decode_register_8(r8);
+
+    let value: u8 = cpu.register.get_8(&r8_register);
+
+    let result: u8 = value & (1 << u3);
+
+    cpu.register.set_flag(&Flag::Z, result == 0);
+
+}
+
+fn rl_r8(cpu: &mut CPU, opcode: u8){
+    // Rotate bits in register r8 left, through the carry flag.
+    // Cycles: 2 -- Bytes: 2, Flags: Z set if result is 0, N 0, H 0, C Set according to result
+
+    let r8_index = (opcode >> 3) & 0b0000_0111;
+    let r8_register: Register = cpu.register.decode_register_8(r8_index);
+
+    let mut value: u8 = cpu.register.get_8(&r8_register);
+
+    let carry_flag: bool = cpu.register.get_flag(&Flag::C);
+    let leaving_bit: u8 = value & (1 << 7);
+     
+    value = value << 1;
+    cpu.register.set_flag(&Flag::C, leaving_bit == 0);
+
+    value |= carry_flag as u8;
+
+    cpu.register.set_8(&r8_register, value);
+
+}
+
+fn pop_r16(cpu: &mut CPU, opcode: u8) {
+    // Pop register r16 from the stack. This is roughly equivalent to the following imaginary instructions:
+    // Cycles: 3 -- Bytes: 1 -- Flags: None
+
+    let r16_index = (opcode >> 3) & 0b0000_0111;
+
+    let register= cpu.register.decode_register_16(r16_index);
+
+    let value = cpu.pop_stack();
+
+    cpu.register.set_16(&register, value);
+
+
+}
+
+fn ret(cpu: &mut CPU, opcode: u8) {
+    // Return from subroutine.
+    // Cycles: 4 -- Bytes: 1 -- Flags: None
+    let value =  cpu.pop_stack();
+    cpu.set_pc(value);
+
+}
+
+fn ret_cc(cpu: &mut CPU, opcode: u8) {
+    // Return from subroutine if condition cc is met.
+    // Cycles 5 if met else 2 -- Bytes: 1 -- Flags: None
+
+    let value = cpu.pop_stack();
+
+    let expected_output: bool = ((opcode >> 3) & 0b0000_0001) == 1; // expected output of the condition
+    let condition: u8 = (opcode >> 4) & 0b0000_0011; // condition to check
+
+    let condition_index = match condition {
+        0b10 => Flag::Z, // Zero flag
+        0b11 => Flag::C, // Carry flag
+        _=> panic!("{:#b}", condition),
+    };
+
+
+    if cpu.register.get_flag(&condition_index) == expected_output {
+        cpu.set_pc(value);
+    }
+}
