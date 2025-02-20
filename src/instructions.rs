@@ -346,6 +346,7 @@ fn cp_a_n8(cpu: &mut CPU, opcode: u8){
     cpu.register.set_flag(&Flag::N, true);
     cpu.register.set_flag(&Flag::H, (a & 0x0F) < (n8 & 0x0F));
     cpu.register.set_flag(&Flag::C, a < n8);
+
 }
 
 // jump and subroutine 
@@ -364,7 +365,7 @@ fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
         _=> panic!("Invalid condition"),
     };
 
-    if cpu.register.get_flag(&condition_index) != expected_output {
+    if cpu.register.get_flag(&condition_index) == expected_output { // if z = 0
             cpu.offset_pc(offset);
         }
     }
@@ -450,7 +451,7 @@ fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
 
     let result: u8 = value & (1 << u3);
     
-    cpu.register.set_flag(&Flag::Z, result != 0);
+    cpu.register.set_flag(&Flag::Z, result == 0);
 }
 fn rl_r8(cpu: &mut CPU, opcode: u8){
     // Rotate bits in register r8 left, through the carry flag.
