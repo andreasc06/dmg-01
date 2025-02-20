@@ -76,21 +76,19 @@ impl Registers {
             _ => panic!("16-bit register can't be read")
         }
     }
-    pub fn set_flag(&mut self, flag: &Flag, value: bool){
-
+    pub fn set_flag(&mut self, flag: &Flag, value: bool) {
         let bit = match flag {
             Flag::C => 4,
             Flag::H => 5,
             Flag::N => 6,
             Flag::Z => 7,
         };
-
+    
         if value {
-            self.f = (value as u8) << bit;
+            self.f |= 1 << bit; 
         } else {
-            self.f = self.f & !(1 << bit);
+            self.f &= !(1 << bit); 
         }
-        
     }
 
     pub fn get_flag(&self, flag: &Flag) -> bool{
