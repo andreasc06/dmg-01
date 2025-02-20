@@ -449,9 +449,8 @@ fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
     let value: u8 = cpu.register.get_8(&r8_register);
 
     let result: u8 = value & (1 << u3);
-
-    cpu.register.set_flag(&Flag::Z, result == 0);
-
+    
+    cpu.register.set_flag(&Flag::Z, result != 0);
 }
 fn rl_r8(cpu: &mut CPU, opcode: u8){
     // Rotate bits in register r8 left, through the carry flag.
