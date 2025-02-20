@@ -2,6 +2,7 @@
 mod cpu;
 mod bus;
 mod instructions;
+mod registers;
 
 fn main() {
 
