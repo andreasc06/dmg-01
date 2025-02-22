@@ -24,12 +24,11 @@ impl CPU {
 
     pub fn boot(&mut self){
         let mut loops: i32 = 0;
-        let exit_op: bool = true;
         loop {
             let current_instruction = self.fetch_n8(); 
             let pc_of_opcode = self.pc - 1;
 
-            if (pc_of_opcode == 0x55) {
+            if (pc_of_opcode == 0x68) { 
                 self.debug_state(pc_of_opcode, current_instruction, true);
             }
 
@@ -94,6 +93,16 @@ impl CPU {
                         .collect::<Vec<String>>()
                         .join("\n")
                 ).blue());
+        println!("{}", format!(
+                    "\nTILEMAP 0:\n{}",
+                    (0x9800..=0x9C00)
+                        .map(|addr| format!("{:02X}", self.bus.read(addr as u16)))
+                        .collect::<Vec<String>>()
+                        .chunks(32) // 16 bytes per line
+                        .map(|line| line.join(" "))
+                        .collect::<Vec<String>>()
+                        .join("\n")
+                ).green());
         println!("{}", format!(
                     "\nSTACK\n{}",
                     (0xFF80..=0xFFFE)
