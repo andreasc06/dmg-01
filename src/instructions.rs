@@ -1,11 +1,12 @@
 use core::panic;
+use colored::Colorize;
 
 use crate::cpu::CPU;
 use crate::registers::{Register,Flag};
 
 pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
 
-    let ins = cpu.get_pc() - 1;
+    let pc_of_ins = cpu.get_pc() - 1;
 
     match opcode {
 
@@ -26,7 +27,7 @@ pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
         0x4F => ld_r8_r8(cpu, opcode), // LD C, A
         0x06 => ld_r8_n8(cpu, opcode), // LD B, n8
         0xC5 => push_r16(cpu, opcode), // PUSH BC
-        0x17 => rl_r8(cpu, opcode), // RLA
+        0x17 => rla(cpu, opcode), // RLA
         0xC1 => pop_r16(cpu, opcode), // POP BC
         0x05 => dec_r8(cpu, opcode), // DEC B
         0x22 => ld_hli_a(cpu, opcode), // LD (HL+) A
@@ -35,6 +36,15 @@ pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
         0x13 => inc_r16(cpu, opcode), // INC DE
         0x7B => ld_r8_r8(cpu, opcode), // LD A E
         0xFE => cp_a_n8(cpu, opcode), // CP A n8
+        0xEA => ld_n16_a(cpu, opcode), // LD a16 A
+        0x3D => dec_r8(cpu, opcode), // DEC A
+        0x28 => jr_cc_n16(cpu, opcode), // JR Z, e8
+        0x67 => ld_r8_r8(cpu, opcode), // LD H A
+        0x57 => ld_r8_r8(cpu, opcode), // LD D A
+        0x04 => inc_r8(cpu, opcode), // INC B
+        0x1E => ld_r8_n8(cpu, opcode), // LD E n8
+        0xF0 => ldh_a_n16(cpu, opcode), // LDH A a8
+    
 
         0xCB => {
 
@@ -43,12 +53,15 @@ pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
             match next {
                 0x7C => bit_u3_r8(cpu, next), // BIT 7 H
                 0x11 => rl_r8(cpu, next), // RL C
-                _ => panic!("Unknown CB opcode: 0x{:02X} at 0x{:02X}", opcode, ins), // Handle unknown opcode
+                _ => panic!("Unknown CB opcode: 0x{:02X} at 0x{:02X}", opcode, pc_of_ins), // Handle unknown opcode
             }
 
 
         }
-        _ => panic!("Unknown opcode: 0x{:02X} at 0x{:02X}", opcode, ins), // Handle unknown opcode
+        _ => {
+
+            cpu.debug_state(pc_of_ins, opcode, true);
+        }
     }
 }
     
@@ -74,7 +87,6 @@ fn ld_r8_n8(cpu: &mut CPU, opcode: u8) {
     let des: u8 = (opcode >> 3) & 0b0000_0111;
 
     let des_register: Register = cpu.register.decode_register_8(des);
-
 
     cpu.register.set_8(&des_register,n8);
 
@@ -304,7 +316,7 @@ fn dec_r8(cpu: &mut CPU, opcode: u8){
     let value: u8 = cpu.register.get_8(&r8_register).wrapping_sub(1);
     cpu.register.set_8(&r8_register, value);
     
-    cpu.register.set_flag(&Flag::Z, value != 0);
+    cpu.register.set_flag(&Flag::Z, value == 0);
 
 }
 fn sub_r8(cpu: &mut CPU, opcode: u8){
@@ -371,7 +383,7 @@ fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
     }
 fn call(cpu: &mut CPU, opcode: u8){
     // Call address n16.
-    // Cycles: 3 met else 2 -- Bytes: 2 -- Flags None
+    // Cycles: 3 met else 2 -- Bytes: 3 -- Flags None
     let low_bytes: u8 = cpu.fetch_n8();
     let high_bytes: u8 = cpu.fetch_n8();
 
@@ -379,13 +391,14 @@ fn call(cpu: &mut CPU, opcode: u8){
 
     cpu.push_stack16(cpu.get_pc());
 
+
     cpu.set_pc(n16);
 
 }
 fn ret(cpu: &mut CPU, opcode: u8) {
     // Return from subroutine.
     // Cycles: 4 -- Bytes: 1 -- Flags: None
-    let value =  cpu.pop_stack();
+    let value =  cpu.pop_stack16();
     cpu.set_pc(value);
 
 }
@@ -393,7 +406,7 @@ fn ret_cc(cpu: &mut CPU, opcode: u8) {
     // Return from subroutine if condition cc is met.
     // Cycles 5 if met else 2 -- Bytes: 1 -- Flags: None
 
-    let value = cpu.pop_stack();
+    let value = cpu.pop_stack16();
 
     let expected_output: bool = ((opcode >> 3) & 0b0000_0001) == 1; // expected output of the condition
     let condition: u8 = (opcode >> 4) & 0b0000_0011; // condition to check
@@ -453,25 +466,48 @@ fn bit_u3_r8(cpu: &mut CPU, opcode: u8){
     
     cpu.register.set_flag(&Flag::Z, result == 0);
 }
+fn rla(cpu: &mut CPU, opcode: u8) {
+    // Rotate register A left, through the carry flag.
+    // Cycles: 2 -- Bytes: 1 -- Flags: Z 0, N 0, H 0, C set according to result
+
+    let mut value: u8 = cpu.register.get_8(&Register::A);
+
+    let carry_flag: bool = cpu.register.get_flag(&Flag::C);
+    let leaving_bit: u8 = value & (1 << 7);
+
+    value = value << 1;
+    cpu.register.set_flag(&Flag::C, leaving_bit != 0);
+    value |= carry_flag as u8;
+    cpu.register.set_8(&Register::A, value);
+
+    cpu.register.set_flag(&Flag::Z, false);
+    cpu.register.set_flag(&Flag::N, false);
+    cpu.register.set_flag(&Flag::H, false);
+
+
+
+}
 fn rl_r8(cpu: &mut CPU, opcode: u8){
     // Rotate bits in register r8 left, through the carry flag.
     // Cycles: 2 -- Bytes: 2, Flags: Z set if result is 0, N 0, H 0, C Set according to result
 
-    let r8_index = (opcode >> 3) & 0b0000_0111;
+    let r8_index = (opcode) & 0b0000_0111;
     let r8_register: Register = cpu.register.decode_register_8(r8_index);
 
     let mut value: u8 = cpu.register.get_8(&r8_register);
 
     let carry_flag: bool = cpu.register.get_flag(&Flag::C);
     let leaving_bit: u8 = value & (1 << 7);
-     
+
     value = value << 1;
-    cpu.register.set_flag(&Flag::C, leaving_bit == 0);
+    cpu.register.set_flag(&Flag::C, leaving_bit != 0);
 
     value |= carry_flag as u8;
 
     cpu.register.set_8(&r8_register, value);
-
+    cpu.register.set_flag(&Flag::Z, leaving_bit == 0);
+    cpu.register.set_flag(&Flag::N, false);
+    cpu.register.set_flag(&Flag::H, false);
 }
 
 // stack
@@ -483,7 +519,7 @@ fn pop_r16(cpu: &mut CPU, opcode: u8) {
 
     let register= cpu.register.decode_register_16(r16_index);
 
-    let value = cpu.pop_stack();
+    let value = cpu.pop_stack16();
 
     cpu.register.set_16(&register, value);
 
