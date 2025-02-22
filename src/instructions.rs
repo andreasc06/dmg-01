@@ -44,6 +44,12 @@ pub fn execute_instruction(cpu: &mut CPU, opcode: u8) {
         0x04 => inc_r8(cpu, opcode), // INC B
         0x1E => ld_r8_n8(cpu, opcode), // LD E n8
         0xF0 => ldh_a_n16(cpu, opcode), // LDH A a8
+        0x0D => dec_r8(cpu, opcode), // DEC C
+        0x2E => ld_r8_n8(cpu, opcode), // LD L n8
+        0x18 => jr_n16(cpu, opcode), // JR n16
+
+
+        
     
 
         0xCB => {
@@ -318,6 +324,7 @@ fn dec_r8(cpu: &mut CPU, opcode: u8){
     
     cpu.register.set_flag(&Flag::Z, value == 0);
 
+
 }
 fn sub_r8(cpu: &mut CPU, opcode: u8){
     // Subtract the value in register r8 from the value in register A and store the result in register A.
@@ -366,7 +373,7 @@ fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
     // Jump to the address PC + n16 if the condition specified by CC is met.
     // Cycles: 3 met else 2 -- Bytes: 2 -- Flags None
 
-    let offset: i8 = cpu.fetch_n8() as i8;
+    let jump_offset: i8 = cpu.fetch_n8() as i8;
 
     let expected_output: bool = ((opcode >> 3) & 0b0000_0001) == 1; 
     let condition: u8 = (opcode >> 4) & 0b0000_0011; // condition to check
@@ -378,9 +385,20 @@ fn jr_cc_n16(cpu: &mut CPU, opcode: u8){
     };
 
     if cpu.register.get_flag(&condition_index) == expected_output { // if z = 0
-            cpu.offset_pc(offset);
+            cpu.offset_pc(jump_offset);
         }
     }
+
+fn jr_n16(cpu: &mut CPU, opcode: u8){
+    // Relative Jump to address n6.
+    // Cycles: 3 -- Bytes: 2 -- Flags: None
+
+    let jump_offset: i8 = cpu.fetch_n8() as i8;
+
+    cpu.offset_pc(jump_offset)
+
+
+}
 fn call(cpu: &mut CPU, opcode: u8){
     // Call address n16.
     // Cycles: 3 met else 2 -- Bytes: 3 -- Flags None
